@@ -110,7 +110,21 @@ constructor(
             }
             gatt.connect().checkOperationInitiationSucceeded()
         }
-        isConnectedFlow.first { connected -> connected }
+        
+        // Alternative #1: Use isConnectedFlow with accompanying change below: 
+        val isConnected = isConnectedFlow.first()
+        if (!isConnected) throw GattException("Connect operation failed, got disconnected.")
+        
+        // Alternative #2: Use stateChanges flow here and inspect the new connection state.
+        // ...
+        
+        // Alternative #3: Treat it like an operation/request like writing a characteristic:
+        //
+        // In onConnectionStateChange below:
+        //
+        //     connectionStateChangeChannel.launchAndSendResponse(newState, status)
+        //
+        // Details to be worked out.... Code similar to gattRequest() would be below here:
     }
 
     @RequiresPermission(BluetoothConnectPermission)
@@ -121,6 +135,8 @@ constructor(
         checkNotClosed()
         requireGatt().disconnect()
         isConnectedFlow.first { connected -> !connected }
+        val isConnected = isConnectedFlow.first()
+        if (isConnected) throw GattException("Disconnect operation failed, still connected.")
     }
 
     @RequiresPermission(BluetoothConnectPermission)
@@ -283,9 +299,8 @@ constructor(
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BG, status: Int, newState: Int) {
-            when (status) {
-                STATUS_SUCCESS -> isConnected = newState == BluetoothProfile.STATE_CONNECTED
-            }
+            // Alternative #1: Change the logic here to also set isConnected on failure statuses, something like:
+            isConnected = (status == STATUS_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED)
             stateChangesMutableFlow.tryEmit(
                 GattConnection.StateChange(status = status, newState = newState)
             )
